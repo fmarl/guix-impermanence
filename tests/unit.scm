@@ -4,10 +4,13 @@
 (use-modules (guix-impermanence build persist)
              (guix-impermanence file-systems)
              (guix-impermanence services)
+             (gnu services)
+             (gnu services base)
              (gnu system file-systems)
              ((guix build utils) #:select (mkdir-p delete-file-recursively))
              (ice-9 rdelim)
              (ice-9 textual-ports)
+             (srfi srfi-1)
              (srfi srfi-64))
 
 (define (call-with-temporary-directory proc)
@@ -50,7 +53,27 @@
 
 (test-equal "impermanence adds three services"
   3
-  (length (impermanence-services %base-persisted-directories '("alice"))))
+  (length (impermanence-services '("alice"))))
+
+(define (persisted-mounts config)
+  (let ((extension (find (lambda (extension)
+                           (eq? (service-extension-target extension)
+                                file-system-service-type))
+                         (service-type-extensions
+                          persisted-directories-service-type))))
+    (map file-system-mount-point
+         ((service-extension-compute extension) config))))
+
+(test-equal "persisted directories do nothing without persist"
+  '()
+  (persisted-mounts (persisted-directories-configuration)))
+
+(test-equal "extensions add persisted directories once"
+  '("/var/guix" "/root/.cache/guix" "/var/lib/a" "/var/lib/b")
+  (persisted-mounts ((service-type-extend persisted-directories-service-type)
+                     (persisted-directories-configuration (persist "/data"))
+                     '(("/var/lib/a" #o700) ("/var/lib/b" #o700)
+                       ("/var/lib/a" #o700)))))
 
 (test-equal "persisted directories are created with their mode"
   #o700

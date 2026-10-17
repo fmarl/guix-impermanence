@@ -40,5 +40,6 @@
             (device (string-append persist directory))
             (type "none")
             (flags '(bind-mount))
+            (create-mount-point? #t)
             (check? #f))))
        directories))

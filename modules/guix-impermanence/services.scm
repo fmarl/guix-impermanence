@@ -3,22 +3,73 @@
 
 (define-module (guix-impermanence services)
   #:use-module (guix gexp)
+  #:use-module (guix records)
   #:use-module (gnu packages admin)
   #:use-module (gnu services)
+  #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
   #:use-module (guix-impermanence file-systems)
-  #:export (impermanence-services))
+  #:use-module (srfi srfi-1)
+  #:export (persisted-directories-configuration
+            persisted-directories-configuration?
+            persisted-directories-configuration-persist
+            persisted-directories-configuration-directories
+            persisted-directories-service-type
+            impermanence-services))
 
 (define %build-modules
   '((guix build utils)
     (guix-impermanence build persist)))
 
-(define (persisted-directories-activation persist directories)
-  (with-imported-modules %build-modules
-    #~(begin
-        (use-modules (guix-impermanence build persist))
-        (create-persisted-directories #$persist
-                                      '#$directories))))
+(define-record-type* <persisted-directories-configuration>
+  persisted-directories-configuration make-persisted-directories-configuration
+  persisted-directories-configuration?
+  (persist persisted-directories-configuration-persist
+           (default #f))
+  (directories persisted-directories-configuration-directories
+               (default %base-persisted-directories)))
+
+(define (persisted-directories config)
+  (delete-duplicates (persisted-directories-configuration-directories config)
+                     (lambda (a b)
+                       (string=? (first a)
+                                 (first b)))))
+
+(define (persisted-directories-activation config)
+  (let ((persist (persisted-directories-configuration-persist config)))
+    (if persist
+        (with-imported-modules %build-modules
+          #~(begin
+              (use-modules (guix-impermanence build persist))
+              (create-persisted-directories #$persist
+                                            '#$(persisted-directories config))))
+        #~#t)))
+
+(define (persisted-directories-file-systems config)
+  (let ((persist (persisted-directories-configuration-persist config)))
+    (if persist
+        (persisted-file-systems (persisted-directories config)
+                                #:persist persist)
+        '())))
+
+(define persisted-directories-service-type
+  (service-type
+    (name 'persisted-directories)
+    (extensions
+     (list (service-extension activation-service-type
+                              persisted-directories-activation)
+           (service-extension file-system-service-type
+                              persisted-directories-file-systems)))
+    (compose concatenate)
+    (extend (lambda (config directories)
+              (persisted-directories-configuration
+                (inherit config)
+                (directories (append (persisted-directories-configuration-directories
+                                      config) directories)))))
+    (default-value (persisted-directories-configuration))
+    (description
+     "Bind-mount directories from the persistent file system over the tmpfs
+root.")))
 
 (define (secrets-program name exp)
   (program-file name
@@ -47,10 +98,10 @@
       (documentation
        "Persistent password hashes, signing key and SSH host keys"))))
 
-(define* (impermanence-services directories users
+(define* (impermanence-services users
                                 #:key (persist %persist))
-  (list (simple-service 'persisted-directories activation-service-type
-                        (persisted-directories-activation persist directories))
+  (list (service persisted-directories-service-type
+                 (persisted-directories-configuration (persist persist)))
         (simple-service 'persistent-secrets shepherd-root-service-type
                         (list (persistent-secrets-shepherd-service persist
                                                                    users)))
