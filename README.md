@@ -26,3 +26,19 @@ hashes of the given users.
 ```
 
 `/persist` has to be `needed-for-boot?`.
+
+On btrfs, `(guix-impermanence btrfs)` gives the tmpfs root and subvolumes for
+`/gnu`, `/persist` and `/boot`.  Extra subvolumes are added, and one with the
+same mount point replaces the default:
+
+```scheme
+(use-modules (guix-impermanence btrfs))
+
+(impermanent-btrfs-file-systems
+ (file-system-label "root")
+ #:options "compress=zstd"
+ #:subvolumes (list (btrfs-subvolume
+                      (mount-point "/home")
+                      (name "@home")
+                      (flags '(no-suid no-dev)))))
+```

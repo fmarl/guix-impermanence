@@ -1,7 +1,8 @@
 ;;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;; Copyright © 2026 Florian Marrero Liestmann <f.m.liestmann@fx-ttr.de>
 
-(use-modules (guix-impermanence build persist)
+(use-modules (guix-impermanence btrfs)
+             (guix-impermanence build persist)
              (guix-impermanence file-systems)
              (guix-impermanence services)
              (gnu services)
@@ -137,5 +138,48 @@
    (lambda (persist)
      (save-password-hash persist "alice" "$6$hash")
      (mode (string-append persist "/etc/shadow.d/alice")))))
+
+(define (mount-points file-systems)
+  (map file-system-mount-point file-systems))
+
+(test-equal "btrfs layout has a tmpfs root and the required subvolumes"
+  '("/" "/gnu" "/persist" "/boot")
+  (mount-points (impermanent-btrfs-file-systems "/dev/sda1")))
+
+(test-equal "extra subvolumes come after the required ones"
+  '("/" "/gnu" "/persist" "/boot" "/home")
+  (mount-points (impermanent-btrfs-file-systems
+                 "/dev/sda1"
+                 #:subvolumes (list (btrfs-subvolume
+                                      (mount-point "/home")
+                                      (name "@home"))))))
+
+(test-equal "a subvolume replaces the required one at its mount point"
+  '(("/gnu" "subvol=@store,compress=zstd" (no-atime no-suid)))
+  (filter-map (lambda (fs)
+                (and (string=? (file-system-mount-point fs) "/gnu")
+                     (list (file-system-mount-point fs)
+                           (file-system-options fs)
+                           (file-system-flags fs))))
+              (impermanent-btrfs-file-systems
+               "/dev/sda1"
+               #:options "compress=zstd"
+               #:flags '(no-atime)
+               #:subvolumes (list (btrfs-subvolume
+                                    (mount-point "/gnu")
+                                    (name "@store")
+                                    (flags '(no-suid)))))))
+
+(test-equal "the persist subvolume is needed for boot"
+  '(("/persist" #t) ("/boot" #f))
+  (filter-map (lambda (fs)
+                (and (member (file-system-mount-point fs) '("/persist" "/boot"))
+                     (list (file-system-mount-point fs)
+                           (file-system-needed-for-boot? fs))))
+              (impermanent-btrfs-file-systems "/dev/sda1")))
+
+(test-equal "subvolume names are read back from file systems"
+  '(#f "@gnu" "@persist" "@boot")
+  (map file-system-subvolume (impermanent-btrfs-file-systems "/dev/sda1")))
 
 (exit (zero? (test-runner-fail-count (test-end "impermanence"))))
