@@ -8,9 +8,6 @@ hashes of the given users.
 (use-modules (guix-impermanence file-systems)
              (guix-impermanence services))
 
-(define %directories
-  (cons '("/var/lib/bluetooth" #o700) %base-persisted-directories))
-
 (operating-system
   ...
   (file-systems (append (list (tmpfs-root-file-system)
@@ -19,13 +16,17 @@ hashes of the given users.
                                 (device (file-system-label "persist"))
                                 (type "btrfs")
                                 (needed-for-boot? #t)))
-                        (persisted-file-systems %directories)
                         %base-file-systems))
-  (services (append (impermanence-services %directories '("alice"))
+  (services (append (list (simple-service 'bluetooth-state
+                                          persisted-directories-service-type
+                                          '(("/var/lib/bluetooth" #o700))))
+                    (impermanence-services '("alice"))
                     %base-services)))
 ```
 
-`/persist` has to be `needed-for-boot?`.
+`/persist` has to be `needed-for-boot?`.  Services add directories by
+extending `persisted-directories-service-type` (`/var/guix` and
+`/root/.cache/guix` are always kept).
 
 On btrfs, `(guix-impermanence btrfs)` gives the tmpfs root and subvolumes for
 `/gnu`, `/persist` and `/boot`.  Extra subvolumes are added, and one with the
