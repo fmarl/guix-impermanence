@@ -29,17 +29,37 @@
 (define (impermanent-file-systems? file-systems)
   (any (lambda (fs)
          (and (string=? (file-system-mount-point fs) "/")
-              (string=? (file-system-type fs) "tmpfs"))) file-systems))
+              (string=? (file-system-type fs) "tmpfs")))
+       file-systems))
+
+(define (below? directory parent)
+  (string-prefix? (string-append parent "/") directory))
+
+(define (closest-parent directory candidates)
+  (fold (lambda (candidate closest)
+          (if (and (below? directory candidate)
+                   (or (not closest)
+                       (> (string-length candidate) (string-length closest))))
+              candidate
+              closest))
+        #f
+        candidates))
 
 (define* (persisted-file-systems directories
                                  #:key (persist %persist))
-  (map (match-lambda
-         ((directory _)
-          (file-system
-            (mount-point directory)
-            (device (string-append persist directory))
-            (type "none")
-            (flags '(bind-mount))
-            (create-mount-point? #t)
-            (check? #f))))
-       directories))
+  (define mount-points
+    (map first directories))
+
+  (define (bind-mount directory)
+    (file-system
+      (mount-point directory)
+      (device (string-append persist directory))
+      (type "none")
+      (flags '(bind-mount))
+      (create-mount-point? #t)
+      (check? #f)
+      (dependencies (match (closest-parent directory mount-points)
+                      (#f '())
+                      (parent (list (bind-mount parent)))))))
+
+  (map bind-mount mount-points))
