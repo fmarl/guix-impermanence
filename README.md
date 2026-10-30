@@ -40,16 +40,24 @@ not be restored is not saved either, so its good copy stays.
 default replaces it.  The subvolume at `/persist` is always needed for boot.
 
 ```scheme
-(use-modules (guix-impermanence btrfs))
+(use-modules (guix-impermanence btrfs)
+             (guix-impermanence services))
 
-(impermanent-btrfs-file-systems
- (file-system-label "root")
- #:options "compress=zstd"
- #:subvolumes (list (btrfs-subvolume
-                      (mount-point "/home")
-                      (name "@home")
-                      (flags '(no-suid no-dev)))))
+(impermanent-operating-system
+ (operating-system
+   ...
+   (file-systems (append (impermanent-btrfs-file-systems
+                          (file-system-label "root")
+                          #:options "compress=zstd"
+                          #:subvolumes (list (btrfs-subvolume
+                                               (mount-point "/home")
+                                               (name "@home")
+                                               (flags '(no-suid no-dev)))))
+                         %base-file-systems)))
+ '("alice"))
 ```
 
 Pass `#:root` for a different tmpfs, such as `(tmpfs-root-file-system #:size
-"4G")`, and `#:persist` to move the persistent subvolume.
+"4G")`, and `#:persist` to move the persistent subvolume, to
+`impermanent-operating-system` as well.  `#:options` and `#:flags` also apply
+to `/gnu` and `/boot`.
