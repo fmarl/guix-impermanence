@@ -4,12 +4,14 @@
 (define-module (guix-impermanence build persist)
   #:use-module (guix build syscalls)
   #:use-module (guix build utils)
+  #:use-module (ice-9 exceptions)
   #:use-module (ice-9 format)
   #:use-module (ice-9 ftw)
   #:use-module (ice-9 match)
   #:use-module (ice-9 rdelim)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-26)
+  #:use-module (srfi srfi-34)
   #:export (create-persisted-directories
             restore-secrets
             save-secrets))
@@ -26,12 +28,12 @@ mode 700."
     (chmod directory mode)))
 
 (define (delete-file-if-exists file)
-  (catch 'system-error
-    (lambda ()
-      (delete-file file))
-    (lambda args
-      (unless (= ENOENT (system-error-errno args))
-        (apply throw args)))))
+  (guard (exception ((and (eq? (exception-kind exception) 'system-error)
+                          (match (exception-args exception)
+                            ((_ _ _ (errno)) (= errno ENOENT))
+                            (_ #f)))
+                     #f))
+    (delete-file file)))
 
 (define (replace-file file mode write)
   (let ((new (string-append file ".new")))
@@ -72,14 +74,15 @@ mode 700."
 
 (define (try what thunk)
   "Call THUNK and return #t, or report its error about WHAT and return #f."
-  (catch #t
-    (lambda ()
-      (thunk)
-      #t)
-    (lambda (key . args)
-      (format (current-error-port) "impermanence: ~a: " what)
-      (print-exception (current-error-port) #f key args)
-      #f)))
+  (guard (exception
+          (else
+           (format (current-error-port) "impermanence: ~a: " what)
+           (print-exception (current-error-port) #f
+                            (exception-kind exception)
+                            (exception-args exception))
+           #f))
+    (thunk)
+    #t))
 
 (define (failures proc items)
   (remove (lambda (item)
