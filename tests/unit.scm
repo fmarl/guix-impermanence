@@ -101,9 +101,14 @@
    (persisted-mounts '(("/var/lib/a" #o700) ("/var/lib/a" #o755)))))
 
 (test-equal "persisted directories need an absolute name and a mode"
-  "(\"var/lib/a\" 448): expected an absolute directory and a mode"
+  "(\"var/lib/a\" 448): expected a normalized absolute directory and a mode"
   (error-message
    (persisted-mounts '(("var/lib/a" #o700)))))
+
+(test-equal "persisted directories need a normalized name"
+  "(\"/var/lib/\" 493): expected a normalized absolute directory and a mode"
+  (error-message
+   (persisted-mounts '(("/var/lib/" #o755)))))
 
 (test-equal "persisted directories are created with their mode"
   #o700

@@ -39,11 +39,19 @@
   (directories persisted-directories-configuration-directories
                (default %base-persisted-directories)))
 
+(define (normalized-directory? directory)
+  (match (string-split directory #\/)
+    (("" components ...)
+     (every (lambda (component)
+              (not (member component '("" "." ".."))))
+            components))
+    (_ #f)))
+
 (define (persisted-directories config)
   (reverse
    (fold (lambda (entry directories)
            (match entry
-             (((? absolute-file-name? directory) (? integer? mode))
+             (((? normalized-directory? directory) (? integer? mode))
               (match (assoc directory directories)
                 (#f (cons entry directories))
                 ((_ (? (cut = mode <>))) directories)
@@ -53,7 +61,8 @@
                          directory other-mode mode)))))
              (_
               (raise (formatted-message
-                      (G_ "~s: expected an absolute directory and a mode")
+                      (G_ "~s: expected a normalized absolute directory \
+and a mode")
                       entry)))))
          '()
          (persisted-directories-configuration-directories config))))
