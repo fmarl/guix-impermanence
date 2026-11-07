@@ -21,6 +21,8 @@
              (srfi srfi-34)
              (srfi srfi-64))
 
+;;;; Helpers
+
 (define (call-with-temporary-directory proc)
   (let ((directory (mkdtemp (string-append (or (getenv "TMPDIR") "/tmp")
                                            "/impermanence-XXXXXX"))))
@@ -57,6 +59,8 @@
     #f))
 
 (test-begin "impermanence")
+
+;;;; Persisted directories
 
 (test-equal "persisted directories become bind mounts below persist"
   '(("/var/guix" "/data/var/guix" "none" (bind-mount)))
@@ -75,6 +79,8 @@
                                  ("/var/lib-x" #o700) ("/var/lib/a" #o700)))))
 
 (define* (persisted-mounts directories #:key (persist "/data"))
+  "Return the mount points of the persisted directories service extended
+with DIRECTORIES."
   (let ((extension (find (lambda (extension)
                            (eq? (service-extension-target extension)
                                 file-system-service-type))
@@ -109,6 +115,8 @@
   "(\"/var/lib/\" 493): expected a normalized absolute directory and a mode"
   (error-message
    (persisted-mounts '(("/var/lib/" #o755)))))
+
+;;;; Creating persisted directories and restoring keys
 
 (test-equal "persisted directories are created with their mode"
   #o700
@@ -155,6 +163,8 @@
      (write-file (string-append etc "/ssh/ssh_host_ed25519_key") "fresh")
      (restore-secrets persist '() #:etc etc #:report report)
      (read-file (string-append etc "/ssh/ssh_host_ed25519_key")))))
+
+;;;; Saving keys
 
 (test-equal "rotated keys are saved at shutdown"
   "rotated"
@@ -212,6 +222,8 @@
      (restore-secrets persist '() #:etc etc #:report report)
      (scandir (string-append etc "/ssh")
               (lambda (name) (not (member name '("." ".."))))))))
+
+;;;; Password hashes
 
 (test-equal "password hashes are saved and restored"
   '("root:!:1::::::\nalice:$6$hash:1::::::\nbob:$6$bob:1::::::\n" #o600)
@@ -257,6 +269,8 @@
      (write-file (string-append persist "/etc/shadow.d/alice") "$6$hash\n")
      (mkdir-p etc)
      (not (restore-secrets persist '("alice") #:etc etc #:report report)))))
+
+;;;; Failed restores
 
 (test-equal "secrets that were not restored are not saved"
   '(#f "$6$saved\n" "$6$alice\n")
@@ -305,11 +319,15 @@
      (write-file (string-append etc "/shadow") "alice:$6$hash:1::::::\n")
      (list (save-secrets persist '("alice") #:etc etc #:report report)
            (file-exists? (string-append persist "/etc/shadow.d/alice"))))))
+
+;;;; Btrfs layouts
 
 (define (mount-points file-systems)
   (map file-system-mount-point file-systems))
 
 (define (needed-for-boot file-systems)
+  "Return the mount points of FILE-SYSTEMS other than / and /gnu that are
+needed for boot."
   (filter-map (lambda (fs)
                 (and (file-system-needed-for-boot? fs)
                      (not (member (file-system-mount-point fs) '("/" "/gnu")))
@@ -355,6 +373,8 @@
                        (btrfs-subvolume
                          (mount-point "/home")
                          (name "@home2"))))))
+
+;;;; Btrfs subvolumes and tmpfs roots
 
 (test-equal "only the persist subvolume is needed for boot"
   '("/persist")
@@ -401,6 +421,8 @@
                 (mount-point "/")
                 (device "/dev/sda1")
                 (type "btrfs"))))))
+
+;;;; Operating systems
 
 (test-equal "impermanence adds three services"
   3

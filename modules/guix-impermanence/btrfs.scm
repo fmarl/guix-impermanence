@@ -23,6 +23,8 @@
             btrfs-subvolume-file-system
             file-system-subvolume))
 
+;;;; Subvolumes
+
 (define-record-type* <btrfs-subvolume>
   btrfs-subvolume make-btrfs-subvolume
   btrfs-subvolume?
@@ -46,9 +48,9 @@
 
 (define (merge-subvolumes defaults subvolumes)
   "SUBVOLUMES replace the DEFAULTS with the same mount point."
-  (define (same-mount-point? a b)
-    (string=? (btrfs-subvolume-mount-point a)
-              (btrfs-subvolume-mount-point b)))
+  (define (same-mount-point? subvolume other)
+    (string=? (btrfs-subvolume-mount-point subvolume)
+              (btrfs-subvolume-mount-point other)))
 
   (pair-for-each (match-lambda
                    ((subvolume . rest)
@@ -61,6 +63,8 @@
                     (any (cut same-mount-point? default <>) subvolumes))
                   defaults)
           subvolumes))
+
+;;;; File systems
 
 (define* (btrfs-subvolume-file-system device subvolume
                                       #:key

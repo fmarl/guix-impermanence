@@ -16,6 +16,8 @@
             restore-secrets
             save-secrets))
 
+;;;; Persisted directories
+
 (define (ensure-directory directory mode)
   "Unless DIRECTORY exists, create it with MODE and its missing parents with
 mode 700."
@@ -27,6 +29,15 @@ mode 700."
         (lambda () (umask umask-before))))
     (chmod directory mode)))
 
+(define (create-persisted-directories persist directories)
+  "Create each of DIRECTORIES below PERSIST with its mode, unless it exists."
+  (for-each (match-lambda
+              ((directory mode)
+               (ensure-directory (string-append persist directory) mode)))
+            directories))
+
+;;;; Files
+
 (define (delete-file-if-exists file)
   (guard (exception ((and (eq? (exception-kind exception) 'system-error)
                           (match (exception-args exception)
@@ -36,6 +47,8 @@ mode 700."
     (delete-file file)))
 
 (define (replace-file file mode write)
+  "Replace FILE atomically with a new file of MODE.  WRITE gets a port to the
+new file."
   (let ((new (string-append file ".new")))
     (delete-file-if-exists new)
     (let ((port (open new (logior O_WRONLY O_CREAT O_EXCL) mode)))
@@ -71,29 +84,8 @@ mode 700."
         (match (read-line port)
           ((? eof-object?) (reverse lines))
           (line (loop (cons line lines))))))))
-
-(define (try what thunk)
-  "Call THUNK and return #t, or report its error about WHAT and return #f."
-  (guard (exception
-          (else
-           (format (current-error-port) "impermanence: ~a: " what)
-           (print-exception (current-error-port) #f
-                            (exception-kind exception)
-                            (exception-args exception))
-           #f))
-    (thunk)
-    #t))
-
-(define (failures proc items)
-  (remove (lambda (item)
-            (try item (cut proc item)))
-          items))
-
-(define (create-persisted-directories persist directories)
-  (for-each (match-lambda
-              ((directory mode)
-               (ensure-directory (string-append persist directory) mode)))
-            directories))
+
+;;;; Password hashes
 
 (define (hash-file persist user)
   (string-append persist "/etc/shadow.d/" user))
@@ -142,6 +134,8 @@ mode 700."
     (when hash
       (ensure-directory (dirname file) #o700)
       (write-secret file hash))))
+
+;;;; Keys and the restore report
 
 (define (live-file etc file)
   (string-append etc "/" file))
@@ -162,6 +156,8 @@ lacks."
            (delete-file-if-exists saved)))))
 
 (define (restore-secret persist etc file)
+  "Copy FILE from PERSIST to ETC, or save it to PERSIST if it has no copy
+there."
   (let ((saved (saved-file persist file)))
     (if (file-exists? saved)
         (copy-file-atomically saved (live-file etc file))
@@ -187,7 +183,7 @@ lacks."
   (append '("guix/signing-key.pub" "guix/signing-key.sec")
           (host-key-files persist etc)))
 
-;; Secrets that failed to restore, which are therefore not saved at shutdown.
+;;; Secrets that failed to restore, which are therefore not saved at shutdown.
 (define %restore-report
   "/run/impermanence/unrestored")
 
@@ -200,6 +196,27 @@ lacks."
 (define (read-restore-report report)
   (and (file-exists? report)
        (call-with-input-file report read)))
+
+;;;; Restoring and saving
+
+(define (try what thunk)
+  "Call THUNK and return #t, or report its error about WHAT and return #f."
+  (guard (exception
+          (else
+           (format (current-error-port) "impermanence: ~a: " what)
+           (print-exception (current-error-port) #f
+                            (exception-kind exception)
+                            (exception-args exception))
+           #f))
+    (thunk)
+    #t))
+
+(define (failures proc items)
+  "Call PROC on each of ITEMS, report its errors, and return the items it
+failed for."
+  (remove (lambda (item)
+            (try item (cut proc item)))
+          items))
 
 (define* (restore-secrets persist users
                           #:key (etc "/etc") (report %restore-report))
@@ -216,6 +233,8 @@ of USERS from PERSIST, or persist the keys that are not saved yet."
 
 (define* (save-secrets persist users
                        #:key (etc "/etc") (report %restore-report))
+  "Save the keys and the password hashes of USERS to PERSIST, except those
+that REPORT lists as not restored.  Return true if all of them were saved."
   (match (read-restore-report report)
     (#f
      (format (current-error-port)

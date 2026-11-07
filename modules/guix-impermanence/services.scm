@@ -26,6 +26,8 @@
             persisted-directories-configuration-persist
             persisted-directories-configuration-directories))
 
+;;;; Configuration
+
 (define %build-modules
   (cons '(guix-impermanence build persist)
         (source-module-closure '((guix build syscalls)
@@ -46,8 +48,12 @@
               (not (member component '("" "." ".."))))
             components))
     (_ #f)))
+
+;;;; Directories and the service type
 
 (define (persisted-directories config)
+  "Return the directories of CONFIG without duplicates.  Raise an error for an
+invalid entry or a directory with two modes."
   (reverse
    (fold (lambda (entry directories)
            (match entry
@@ -104,6 +110,8 @@ and a mode")
     (description
      "Bind-mount directories from the persistent file system over the tmpfs
 root.")))
+
+;;;; Persistent secrets and the operating system
 
 (define (secrets-program name exp)
   (program-file name
@@ -145,6 +153,8 @@ root.")))
 
 (define* (impermanent-operating-system os users
                                        #:key (persist %persist))
+  "Return OS with the impermanence services, which persist the password hashes
+of USERS.  Raise an error unless / is a tmpfs and PERSIST is needed for boot."
   (let ((file-systems (operating-system-file-systems os))
         (accounts (cons "root"
                         (map user-account-name (operating-system-users os)))))
