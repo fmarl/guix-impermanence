@@ -126,6 +126,18 @@
      (create-persisted-directories persist '(("/var/lib/data" #o700)))
      (mode (string-append persist "/var/lib/data")))))
 
+(test-equal "only the parents created below persist are private"
+  '(#o755 #o700 #o700 #o755 #t)
+  (call-with-temporary-directory
+   (lambda (persist)
+     (let ((umask-before (umask)))
+       (chmod persist #o755)
+       (create-persisted-directories persist '(("/home/alice/Documents" #o755)))
+       (append (map (lambda (directory)
+                      (mode (string-append persist directory)))
+                    '("" "/home" "/home/alice" "/home/alice/Documents"))
+               (list (= umask-before (umask))))))))
+
 (test-equal "new keys are saved to persist"
   "secret"
   (call-with-test-root

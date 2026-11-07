@@ -14,8 +14,14 @@
             save-secrets))
 
 (define (ensure-directory directory mode)
+  "Unless DIRECTORY exists, create it with MODE and its missing parents with
+mode 700."
   (unless (file-exists? directory)
-    (mkdir-p directory)
+    (let ((umask-before (umask #o077)))
+      (dynamic-wind
+        (const #t)
+        (lambda () (mkdir-p directory))
+        (lambda () (umask umask-before))))
     (chmod directory mode)))
 
 (define (delete-file-if-exists file)
