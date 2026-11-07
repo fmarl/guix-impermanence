@@ -4,6 +4,7 @@
 (define-module (guix-impermanence build persist)
   #:use-module (guix build syscalls)
   #:use-module (guix build utils)
+  #:use-module (ice-9 format)
   #:use-module (ice-9 ftw)
   #:use-module (ice-9 match)
   #:use-module (ice-9 rdelim)
