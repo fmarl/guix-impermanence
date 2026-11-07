@@ -140,11 +140,16 @@
   (string-append persist "/etc/" file))
 
 (define (save-secret persist etc file)
+  "Copy FILE from ETC to PERSIST.  Delete the copy of an SSH host key that ETC
+lacks."
   (let ((live (live-file etc file))
         (saved (saved-file persist file)))
-    (when (file-exists? live)
-      (ensure-directory (dirname saved) #o700)
-      (copy-file-atomically live saved))))
+    (cond ((file-exists? live)
+           (ensure-directory (dirname saved) #o700)
+           (copy-file-atomically live saved))
+          ;; A new signing key cannot replace a lost one, so keep its copy.
+          ((string-prefix? "ssh/" file)
+           (delete-file-if-exists saved)))))
 
 (define (restore-secret persist etc file)
   (let ((saved (saved-file persist file)))

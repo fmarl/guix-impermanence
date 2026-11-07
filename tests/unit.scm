@@ -151,6 +151,28 @@
      (save-secrets persist '() #:etc etc #:report report)
      (read-file (string-append persist "/etc/ssh/ssh_host_ed25519_key")))))
 
+(test-assert "deleted keys stay deleted after a reboot"
+  (call-with-test-root
+   (lambda (persist etc report)
+     (let ((key (string-append etc "/ssh/ssh_host_dsa_key")))
+       (write-file key "old")
+       (restore-secrets persist '() #:etc etc #:report report)
+       (delete-file key)
+       (save-secrets persist '() #:etc etc #:report report)
+       (restore-secrets persist '() #:etc etc #:report report)
+       (not (file-exists? key))))))
+
+(test-equal "a missing signing key keeps its copy"
+  "secret"
+  (call-with-test-root
+   (lambda (persist etc report)
+     (let ((key (string-append etc "/guix/signing-key.sec")))
+       (write-file key "secret")
+       (restore-secrets persist '() #:etc etc #:report report)
+       (delete-file key)
+       (save-secrets persist '() #:etc etc #:report report)
+       (read-file (string-append persist "/etc/guix/signing-key.sec"))))))
+
 (test-equal "saved keys keep their mode"
   #o600
   (call-with-test-root
